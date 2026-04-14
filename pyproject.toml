@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "smart-home-zigbee"
+version = "0.1.0"
+description = "Control DNAKE smart home devices (lights, scenes, fresh air) via Zigbee gateway TCP protocol"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+keywords = ["dnake", "zigbee", "smart-home", "iot", "home-automation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Home Automation",
+]
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+mqtt = ["paho-mqtt>=2.0"]
+
+[project.scripts]
+smz = "smart_home_zigbee.cli:main"
+
+[project.urls]
+Repository = "https://github.com/jupiter2021/smart-home-zigbee"
+
+[tool.setuptools.packages.find]
+include = ["smart_home_zigbee*"]

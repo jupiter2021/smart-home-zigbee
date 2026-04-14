@@ -1,0 +1,112 @@
+# smart-home-zigbee Configuration
+# ================================
+#
+# Copy this file to config.yaml and fill in your own device information.
+#
+# How to get your device addresses:
+#   See docs/device-discovery.md for a step-by-step guide.
+#   Short version: ADB into panel -> copy /data/data/com.dnake.ifationhome/databases/central.db
+#                  -> open with any SQLite browser -> query DEVICE_BEAN table
+
+# Zigbee gateway connection
+gateway:
+  ip: "192.168.71.12"      # Gateway IP (check panel Settings -> Zigbee or use UDP discovery)
+  port: 4196               # Default TCP port (usually 4196)
+
+# Light devices
+# Each light needs: name, dev_no (device number), dev_ch (device channel), zone (optional)
+# dev_no and dev_ch come from the gateway's device database (central.db DEVICE_BEAN table)
+lights:
+  - name: "玄关柜灯带"
+    dev_no: 0x50
+    dev_ch: 0x01
+    zone: "玄关"
+
+  - name: "玄关筒灯"
+    dev_no: 0x50
+    dev_ch: 0x02
+    zone: "玄关"
+
+  - name: "餐厅灯带"
+    dev_no: 0x51
+    dev_ch: 0x00
+    zone: "餐厅"
+
+  - name: "餐厅主灯"
+    dev_no: 0x51
+    dev_ch: 0x01
+    zone: "餐厅"
+
+  - name: "客厅主灯"
+    dev_no: 0x51
+    dev_ch: 0x02
+    zone: "客厅"
+
+  - name: "餐厅筒灯"
+    dev_no: 0x52
+    dev_ch: 0x00
+    zone: "餐厅"
+
+  - name: "客厅筒灯"
+    dev_no: 0x52
+    dev_ch: 0x01
+    zone: "客厅"
+
+  - name: "过道灯"
+    dev_no: 0x52
+    dev_ch: 0x02
+    zone: "过道"
+
+  - name: "主卧灯带"
+    dev_no: 0x53
+    dev_ch: 0x00
+    zone: "主卧"
+
+  - name: "主卧衣帽"
+    dev_no: 0x53
+    dev_ch: 0x01
+    zone: "主卧"
+
+  - name: "主卧主灯"
+    dev_no: 0x55
+    dev_ch: 0x00
+    zone: "主卧"
+
+# Scene configuration
+scenes:
+  # Hardware scenes: pre-programmed in gateway, can only be triggered (not modified)
+  # addr/ch come from gateway NVM (see docs/scene-control.md)
+  hardware:
+    - name: "回家"
+      addr: 0x05
+      ch: 0x00
+    - name: "离家"
+      addr: 0x05
+      ch: 0x01
+
+  # Software scenes: custom combinations defined by light names
+  # Use "*" to mean all lights
+  software:
+    全开: ["*"]
+    客厅: ["客厅主灯", "客厅筒灯"]
+    餐厅: ["餐厅灯带", "餐厅主灯", "餐厅筒灯"]
+    主卧: ["主卧灯带", "主卧衣帽", "主卧主灯"]
+    会客: ["客厅主灯", "客厅筒灯", "餐厅主灯", "餐厅灯带", "餐厅筒灯"]
+    迎宾: ["玄关柜灯带", "玄关筒灯", "餐厅灯带", "餐厅主灯", "客厅主灯", "餐厅筒灯", "客厅筒灯", "过道灯"]
+    晚安: ["主卧灯带"]
+
+# Fresh air (ventilation) system
+fresh_air:
+  dev_type: 0x08
+  dev_no: 0x03
+  ch_type: 0x59
+  dev_ch: 0x01
+  default_speed: "mid"       # "low" / "mid" / "high"
+
+# Optional: Bemfa MQTT bridge for Xiaomi XiaoAi voice control
+# See examples/bemfa_bridge.py for the full bridge script
+bemfa:
+  enabled: false
+  broker: "bemfa.com"
+  port: 9501
+  key: ""                    # Set via BEMFA_KEY env var or fill in here
