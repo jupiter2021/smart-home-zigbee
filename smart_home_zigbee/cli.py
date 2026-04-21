@@ -9,6 +9,10 @@ Usage::
     smz scene 回家            # Execute scene
     smz fresh-air on         # Turn on fresh air
     smz fresh-air on --speed high
+    smz ac on 客厅空调        # Turn on AC
+    smz ac temp 客厅空调 24   # Set AC temperature
+    smz heat on 客厅地暖      # Turn on floor heating
+    smz heat temp 客厅地暖 24  # Set floor heating temperature
     smz list                 # List all devices
     smz list scenes          # List all scenes
 """
@@ -22,6 +26,8 @@ from .gateway import Gateway
 from .light import LightController
 from .scene import SceneController
 from .fresh_air import FreshAirController
+from .ac import ACController
+from .heat import FloorHeatingController
 
 
 def setup_logging(verbose: bool = False):
@@ -94,6 +100,44 @@ def cmd_fresh_air(args, gw, config):
     return 0 if ok else 1
 
 
+def cmd_ac(args, gw, config):
+    """Handle ac command."""
+    ac = ACController(gw, config.acs)
+
+    if args.action == "on":
+        ok = ac.on(args.name)
+    elif args.action == "off":
+        ok = ac.off(args.name)
+    elif args.action == "temp":
+        ok = ac.set_temp(args.name, args.value)
+    elif args.action == "mode":
+        ok = ac.set_mode(args.name, args.mode_name)
+    elif args.action == "speed":
+        ok = ac.set_speed(args.name, args.speed_name)
+    else:
+        print(f"Unknown action: {args.action}")
+        return 1
+
+    return 0 if ok else 1
+
+
+def cmd_heat(args, gw, config):
+    """Handle heat command."""
+    heat = FloorHeatingController(gw, config.heats)
+
+    if args.action == "on":
+        ok = heat.on(args.name)
+    elif args.action == "off":
+        ok = heat.off(args.name)
+    elif args.action == "temp":
+        ok = heat.set_temp(args.name, args.value)
+    else:
+        print(f"Unknown action: {args.action}")
+        return 1
+
+    return 0 if ok else 1
+
+
 def cmd_list(args, gw, config):
     """Handle list command."""
     what = args.what or "lights"
@@ -127,9 +171,29 @@ def cmd_list(args, gw, config):
         for s in scenes.list_scenes():
             print(f"  {s}")
 
+    elif what == "acs":
+        if not config.acs:
+            print("No ACs configured. Check your config.yaml")
+            return 0
+        print(f"ACs: {len(config.acs)}")
+        print(f"  {'Name':<14} {'DevNo':<8} {'DevCh':<8} {'Zone':<8}")
+        print(f"  {'─'*14} {'─'*8} {'─'*8} {'─'*8}")
+        for d in config.acs:
+            print(f"  {d.name:<14} 0x{d.dev_no:02X}     0x{d.dev_ch:02X}     {d.zone}")
+
+    elif what == "heats":
+        if not config.heats:
+            print("No floor heating configured. Check your config.yaml")
+            return 0
+        print(f"Floor heating: {len(config.heats)}")
+        print(f"  {'Name':<14} {'DevNo':<8} {'DevCh':<8} {'Zone':<8}")
+        print(f"  {'─'*14} {'─'*8} {'─'*8} {'─'*8}")
+        for d in config.heats:
+            print(f"  {d.name:<14} 0x{d.dev_no:02X}     0x{d.dev_ch:02X}     {d.zone}")
+
     else:
         print(f"Unknown list target: {what}")
-        print("Available: lights, scenes")
+        print("Available: lights, scenes, acs, heats")
         return 1
 
     return 0
@@ -167,9 +231,28 @@ def main(argv=None):
     p_fa.add_argument("--speed", choices=["low", "mid", "high"],
                       help="Wind speed (default: config default)")
 
+    # ac
+    p_ac = sub.add_parser("ac", help="Control air conditioner")
+    p_ac.add_argument("action", choices=["on", "off", "temp", "mode", "speed"],
+                      help="Action to perform")
+    p_ac.add_argument("name", help="AC device name (e.g., 客厅空调)")
+    p_ac.add_argument("value", nargs="?", type=int, help="Temperature (16-32)")
+    p_ac.add_argument("--mode-name", choices=["cool", "heat", "fan", "dehumid"],
+                      help="AC mode")
+    p_ac.add_argument("--speed-name", choices=["low", "mid", "high", "auto"],
+                      help="Wind speed")
+
+    # heat
+    p_heat = sub.add_parser("heat", help="Control floor heating")
+    p_heat.add_argument("action", choices=["on", "off", "temp"],
+                        help="Action to perform")
+    p_heat.add_argument("name", help="Heat device name (e.g., 客厅地暖)")
+    p_heat.add_argument("value", nargs="?", type=int, help="Temperature (16-32)")
+
     # list
     p_list = sub.add_parser("list", help="List devices or scenes")
-    p_list.add_argument("what", nargs="?", choices=["lights", "scenes"],
+    p_list.add_argument("what", nargs="?",
+                        choices=["lights", "scenes", "acs", "heats"],
                         help="What to list (default: lights)")
 
     args = parser.parse_args(argv)
@@ -207,6 +290,10 @@ def main(argv=None):
             return cmd_scene(args, gw, config)
         elif args.command == "fresh-air":
             return cmd_fresh_air(args, gw, config)
+        elif args.command == "ac":
+            return cmd_ac(args, gw, config)
+        elif args.command == "heat":
+            return cmd_heat(args, gw, config)
     finally:
         gw.close()
 

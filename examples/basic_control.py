@@ -3,7 +3,7 @@
 Basic Control Example
 =====================
 
-Demonstrates the simplest way to control lights, scenes, and fresh air.
+Demonstrates the simplest way to control lights, scenes, fresh air, AC, and floor heating.
 
 Usage:
     1. Copy config.example.yaml to config.yaml
@@ -14,6 +14,8 @@ Usage:
 from smart_home_zigbee import Gateway, LightController, load_config
 from smart_home_zigbee.scene import SceneController
 from smart_home_zigbee.fresh_air import FreshAirController
+from smart_home_zigbee.ac import ACController
+from smart_home_zigbee.heat import FloorHeatingController
 
 # Load configuration
 config = load_config()
@@ -68,3 +70,38 @@ with Gateway(config.gateway.ip, config.gateway.port) as gw:
 
     # Turn off
     fa.off()
+
+    # --- Air Conditioner Control ---
+    ac = ACController(gw, config.acs)
+
+    # Turn on (keeps last mode and temperature)
+    ac.on("客厅空调")
+
+    # Set temperature
+    ac.set_temp("客厅空调", 24)
+
+    # Set mode: cool / heat / fan / dehumid
+    ac.set_mode("客厅空调", "cool")
+
+    # Set wind speed: low / mid / high / auto
+    ac.set_speed("客厅空调", "auto")
+
+    # Read room temperature
+    temp = ac.read_room_temp("客厅空调")
+    if temp:
+        print(f"Room temperature: {temp}°C")
+
+    # Turn off
+    ac.off("客厅空调")
+
+    # --- Floor Heating Control ---
+    heat = FloorHeatingController(gw, config.heats)
+
+    # Turn on
+    heat.on("客厅地暖")
+
+    # Set temperature
+    heat.set_temp("客厅地暖", 24)
+
+    # Turn off
+    heat.off("客厅地暖")

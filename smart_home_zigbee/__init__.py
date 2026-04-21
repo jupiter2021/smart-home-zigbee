@@ -3,7 +3,8 @@ smart-home-zigbee: Control DNAKE smart home devices via Zigbee gateway
 ======================================================================
 
 A Python library for controlling DNAKE smart home devices (lights, scenes,
-fresh air) through the Zigbee gateway's proprietary TCP protocol.
+fresh air, air conditioning, floor heating) through the Zigbee gateway's
+proprietary TCP protocol.
 
 Quick start::
 
@@ -15,12 +16,14 @@ Quick start::
         lights.on("客厅")
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from .gateway import Gateway
 from .light import LightController
 from .scene import SceneController
 from .fresh_air import FreshAirController
+from .ac import ACController
+from .heat import FloorHeatingController
 from .config import load_config, Config
 
 __all__ = [
@@ -28,6 +31,8 @@ __all__ = [
     "LightController",
     "SceneController",
     "FreshAirController",
+    "ACController",
+    "FloorHeatingController",
     "load_config",
     "Config",
 ]

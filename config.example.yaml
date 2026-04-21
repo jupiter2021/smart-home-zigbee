@@ -103,6 +103,48 @@ fresh_air:
   dev_ch: 0x01
   default_speed: "mid"       # "low" / "mid" / "high"
 
+# Air conditioner units
+# Each unit shares devNo with floor heating but uses chType=0x19 (handled by the library)
+# dev_no/dev_ch come from the gateway's device database (central.db, devType=0x08, chType=0x19)
+acs:
+  - name: "书房空调"
+    dev_no: 0x01
+    dev_ch: 0x02
+    zone: "书房"
+  - name: "主卧空调"
+    dev_no: 0x01
+    dev_ch: 0x03
+    zone: "主卧"
+  - name: "次卧空调"
+    dev_no: 0x01
+    dev_ch: 0x04
+    zone: "次卧"
+  - name: "客厅空调"
+    dev_no: 0x01
+    dev_ch: 0x05
+    zone: "客厅"
+
+# Floor heating circuits
+# Shares devNo/devCh with AC units but uses chType=0xF1 (handled by the library)
+# dev_no/dev_ch come from the gateway's device database (central.db, devType=0x08, chType=0xF1)
+heats:
+  - name: "书房地暖"
+    dev_no: 0x01
+    dev_ch: 0x02
+    zone: "书房"
+  - name: "主卧地暖"
+    dev_no: 0x01
+    dev_ch: 0x03
+    zone: "主卧"
+  - name: "次卧地暖"
+    dev_no: 0x01
+    dev_ch: 0x04
+    zone: "次卧"
+  - name: "客厅地暖"
+    dev_no: 0x01
+    dev_ch: 0x05
+    zone: "客厅"
+
 # Optional: Bemfa MQTT bridge for Xiaomi XiaoAi voice control
 # See examples/bemfa_bridge.py for the full bridge script
 bemfa:

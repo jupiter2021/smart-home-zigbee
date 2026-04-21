@@ -1,6 +1,6 @@
 # smart-home-zigbee
 
-通过 Zigbee 网关 TCP 协议控制狄耐克 (DNAKE) 智能家居设备（灯光、场景、新风）。
+通过 Zigbee 网关 TCP 协议控制狄耐克 (DNAKE) 智能家居设备（灯光、场景、新风、空调、地暖）。
 
 > 适用于 SH-ZBA-GTW 系列 Zigbee 网关。
 >
@@ -57,8 +57,8 @@ graph TD
 | 🌬️ 新风系统 | ✅ | 整屋新风，低 / 中 / 高三档风速 |
 | 🗣️ 小爱同学 | ✅ | 语音控制：「小爱，开客厅灯」 |
 | 💻 远程控制 | ✅ | 命令行 + Python API，可集成到任何自动化平台 |
-| ❄️ 空调控制 | 🔜 | 各房间独立，冷暖 / 除湿 / 送风 / 温度设定 |
-| 🔥 地暖控制 | 🔜 | 各房间独立，远程温度设定 |
+| ❄️ 空调控制 | ✅ | 各房间独立，冷暖 / 除湿 / 送风 / 温度设定 |
+| 🔥 地暖控制 | ✅ | 各房间独立，远程温度设定 |
 
 ## 所需设备
 
@@ -96,6 +96,10 @@ smz off 客厅            # 关闭客厅所有灯
 smz on 客厅主灯         # 开单灯
 smz scene 回家          # 执行「回家」场景
 smz fresh-air on        # 开新风
+smz ac on 客厅空调      # 开空调
+smz ac temp 客厅空调 24 # 空调设24度
+smz heat on 客厅地暖    # 开地暖
+smz heat temp 客厅地暖 24 # 地暖设24度
 smz list                # 查看设备列表
 ```
 
@@ -128,6 +132,22 @@ with Gateway(config.gateway.ip) as gw:
     fa.on(speed="high")    # 开启 + 高风
     fa.set_speed("low")    # 调风速
     fa.off()               # 关闭
+
+    # 空调
+    from smart_home_zigbee.ac import ACController
+    ac = ACController(gw, config.acs)
+    ac.on("客厅空调")               # 开启（保持上次模式）
+    ac.set_temp("客厅空调", 24)     # 设温度
+    ac.set_mode("客厅空调", "cool") # 制冷模式
+    ac.set_speed("客厅空调", "auto") # 自动风速
+    ac.off("客厅空调")              # 关闭
+
+    # 地暖
+    from smart_home_zigbee.heat import FloorHeatingController
+    heat = FloorHeatingController(gw, config.heats)
+    heat.on("客厅地暖")             # 开启
+    heat.set_temp("客厅地暖", 24)   # 设温度
+    heat.off("客厅地暖")            # 关闭
 ```
 
 ## 命令行参考
@@ -138,7 +158,9 @@ with Gateway(config.gateway.ip) as gw:
 | `smz off [目标]` | 关灯 |
 | `smz scene <名称> [--off]` | 执行场景 |
 | `smz fresh-air on\|off\|speed` | 新风控制（`--speed low\|mid\|high`） |
-| `smz list [lights\|scenes]` | 查看设备或场景列表 |
+| `smz ac <action> <名称> [值]` | 空调控制（action: on/off/temp/mode/speed） |
+| `smz heat <action> <名称> [值]` | 地暖控制（action: on/off/temp） |
+| `smz list [lights\|scenes\|acs\|heats]` | 查看设备或场景列表 |
 
 ## 小爱同学语音控制（可选）
 
@@ -187,6 +209,8 @@ with Gateway(config.gateway.ip) as gw:
 | [docs/light-control.md](docs/light-control.md) | 灯光控制详解 |
 | [docs/scene-control.md](docs/scene-control.md) | 场景机制（硬件场景 vs 软件组合） |
 | [docs/fresh-air-control.md](docs/fresh-air-control.md) | 新风命令参考 |
+| [docs/ac-control.md](docs/ac-control.md) | 空调控制详解 |
+| [docs/heat-control.md](docs/heat-control.md) | 地暖控制详解 |
 | [docs/device-discovery.md](docs/device-discovery.md) | 如何获取你家的设备地址 |
 
 ## 兼容性

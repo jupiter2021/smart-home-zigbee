@@ -58,6 +58,24 @@ class FreshAirConfig:
 
 
 @dataclass
+class ACDevice:
+    """A single air conditioner unit."""
+    name: str
+    dev_no: int
+    dev_ch: int
+    zone: str = ""
+
+
+@dataclass
+class HeatDevice:
+    """A single floor heating circuit."""
+    name: str
+    dev_no: int
+    dev_ch: int
+    zone: str = ""
+
+
+@dataclass
 class BemfaConfig:
     """Bemfa MQTT bridge settings (optional)."""
     enabled: bool = False
@@ -74,6 +92,8 @@ class Config:
     hardware_scenes: list[HardwareScene] = field(default_factory=list)
     software_scenes: dict[str, list[str]] = field(default_factory=dict)
     fresh_air: FreshAirConfig = field(default_factory=FreshAirConfig)
+    acs: list[ACDevice] = field(default_factory=list)
+    heats: list[HeatDevice] = field(default_factory=list)
     bemfa: BemfaConfig = field(default_factory=BemfaConfig)
 
 
@@ -200,6 +220,24 @@ def _parse_config(raw: dict) -> Config:
             dev_ch=_parse_int(fa.get("dev_ch", config.fresh_air.dev_ch)),
             default_speed=fa.get("default_speed", config.fresh_air.default_speed),
         )
+
+    # ACs
+    for item in raw.get("acs", []):
+        config.acs.append(ACDevice(
+            name=item["name"],
+            dev_no=_parse_int(item["dev_no"]),
+            dev_ch=_parse_int(item["dev_ch"]),
+            zone=item.get("zone", ""),
+        ))
+
+    # Floor heating
+    for item in raw.get("heats", []):
+        config.heats.append(HeatDevice(
+            name=item["name"],
+            dev_no=_parse_int(item["dev_no"]),
+            dev_ch=_parse_int(item["dev_ch"]),
+            zone=item.get("zone", ""),
+        ))
 
     # Bemfa
     bemfa = raw.get("bemfa", {})

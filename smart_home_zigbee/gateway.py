@@ -136,6 +136,33 @@ class Gateway:
                     self._close_locked()
             return False
 
+    def send_and_recv(self, packet: bytes, recv_timeout: float = 3.0) -> Optional[bytes]:
+        """
+        Send a packet and read the response.
+
+        Args:
+            packet: Raw binary packet to send
+            recv_timeout: Timeout for reading response in seconds
+
+        Returns:
+            Response bytes, or None on failure/timeout
+        """
+        with self._lock:
+            if not self._connected or not self._sock:
+                if not self._connect_locked():
+                    return None
+            try:
+                self._sock.sendall(packet)
+                self._sock.settimeout(recv_timeout)
+                data = self._sock.recv(64)
+                self._sock.settimeout(self.timeout)
+                self._schedule_keepalive()
+                return data if data else None
+            except Exception as e:
+                log.warning("TCP send_and_recv failed: %s", e)
+                self._close_locked()
+                return None
+
     def _schedule_keepalive(self):
         """Schedule next heartbeat."""
         self._cancel_keepalive()
