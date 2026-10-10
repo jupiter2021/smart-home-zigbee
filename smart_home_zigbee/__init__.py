@@ -24,7 +24,8 @@ from .scene import SceneController
 from .fresh_air import FreshAirController
 from .ac import ACController
 from .heat import FloorHeatingController
-from .config import load_config, Config
+from .elevator import ElevatorController, ElevatorResult
+from .config import load_config, Config, ElevatorConfig
 
 __all__ = [
     "Gateway",
@@ -33,6 +34,9 @@ __all__ = [
     "FreshAirController",
     "ACController",
     "FloorHeatingController",
+    "ElevatorController",
+    "ElevatorResult",
+    "ElevatorConfig",
     "load_config",
     "Config",
 ]

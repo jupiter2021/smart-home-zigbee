@@ -1,0 +1,14 @@
+{
+  "listen_addr": "127.0.0.1:9998",
+  "timeout_seconds": 3,
+  "cooldown_seconds": 30,
+  "sip": {
+    "source_ip": "192.0.2.10",
+    "source_id": "000000",
+    "target_ip": "192.0.2.20",
+    "target_id": "000001",
+    "port": 5060,
+    "floor": 1,
+    "family": 1
+  }
+}

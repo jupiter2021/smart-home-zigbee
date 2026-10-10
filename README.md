@@ -1,6 +1,6 @@
 # smart-home-zigbee
 
-通过 Zigbee 网关 TCP 协议控制狄耐克 (DNAKE) 智能家居设备（灯光、场景、新风、空调、地暖）。
+通过 Zigbee 网关 TCP 协议控制狄耐克 (DNAKE) 智能家居设备（灯光、场景、新风、空调、地暖），支持本楼层下行呼梯。
 
 > 适用于 SH-ZBA-GTW 系列 Zigbee 网关。
 >
@@ -34,6 +34,11 @@ graph TD
         I["新风 x1\n整屋·三档风速"]
     end
 
+    subgraph elevator [电梯控制支路]
+        J["面板侧 SIP 组件\npanel-elevator"]
+        K["楼宇对讲 / 电梯服务端"]
+    end
+
     A -->|语音指令| C
     C -->|MQTT| D
     B -->|TCP 直连| D
@@ -42,6 +47,8 @@ graph TD
     E -->|Zigbee| G
     E -->|Zigbee| H
     E -->|Zigbee| I
+    D -->|HTTP 呼梯接口| J
+    J -->|SIP（面板代发）| K
 
     style cloud fill:#fef3c7,stroke:#f59e0b
     style local fill:#dbeafe,stroke:#3b82f6
@@ -59,6 +66,7 @@ graph TD
 | 💻 远程控制 | ✅ | 命令行 + Python API，可集成到任何自动化平台 |
 | ❄️ 空调控制 | ✅ | 各房间独立，冷暖 / 除湿 / 送风 / 温度设定 |
 | 🔥 地暖控制 | ✅ | 各房间独立，远程温度设定 |
+| 🛗 电梯呼叫 | ✅ | 本楼层下行呼梯，支持小爱同学语音控制 |
 
 ## 所需设备
 
@@ -66,6 +74,7 @@ graph TD
 |------|------|
 | 本地服务器 | NAS、树莓派或任意常开主机（运行桥接服务） |
 | 楼宇智能网关 | 小区原装 DNAKE 网关（已配，无需购买） |
+| 楼宇对讲面板（电梯功能） | 作为面板侧请求发送端，需已有授权环境 |
 | 米家 App | 绑定巴法云后即可语音控制（可选） |
 
 > **无需更换任何灯具或硬件**，直接利用小区精装房自带的智能家居系统。
@@ -88,6 +97,8 @@ cp config.example.yaml config.yaml
 # 获取设备地址的方法见 docs/device-discovery.md
 ```
 
+电梯功能默认关闭。使用前请按 [电梯配置与使用](docs/elevator-control.md) 完成面板组件和 SIP 参数配置。
+
 ### 3. 使用
 
 ```bash
@@ -100,6 +111,7 @@ smz ac on 客厅空调      # 开空调
 smz ac temp 客厅空调 24 # 空调设24度
 smz heat on 客厅地暖    # 开地暖
 smz heat temp 客厅地暖 24 # 地暖设24度
+smz elevator down        # 启用电梯配置后，呼叫本楼层下行
 smz list                # 查看设备列表
 ```
 
@@ -148,6 +160,12 @@ with Gateway(config.gateway.ip) as gw:
     heat.on("客厅地暖")             # 开启
     heat.set_temp("客厅地暖", 24)   # 设温度
     heat.off("客厅地暖")            # 关闭
+
+# 电梯下行（独立于 Zigbee 网关）
+from smart_home_zigbee import ElevatorController
+elevator = ElevatorController(config.elevator)
+result = elevator.call_down()
+print(result.status, result.message)
 ```
 
 ## 命令行参考
@@ -160,6 +178,7 @@ with Gateway(config.gateway.ip) as gw:
 | `smz fresh-air on\|off\|speed` | 新风控制（`--speed low\|mid\|high`） |
 | `smz ac <action> <名称> [值]` | 空调控制（action: on/off/temp/mode/speed） |
 | `smz heat <action> <名称> [值]` | 地暖控制（action: on/off/temp） |
+| `smz elevator down` | 呼叫配置楼层下行 |
 | `smz list [lights\|scenes\|acs\|heats]` | 查看设备或场景列表 |
 
 ## 小爱同学语音控制（可选）
@@ -170,7 +189,7 @@ with Gateway(config.gateway.ip) as gw:
 
 1. **安装 MQTT 依赖**
    ```bash
-   pip install smart-home-zigbee[mqtt]
+   python -m pip install -e ".[mqtt]"
    ```
 
 2. **注册巴法云账号**
@@ -195,11 +214,18 @@ with Gateway(config.gateway.ip) as gw:
    python examples/bemfa_bridge.py
    ```
 
-启动后就可以对小爱同学说「开客厅灯」「关全部灯」「开新风」等指令了。
+如需使用电梯呼叫，请先按 [docs/elevator-control.md](docs/elevator-control.md) 启用 `elevator` 配置并启动面板组件。启动后就可以对小爱同学说「开客厅灯」「关全部灯」「开新风」或「打开电梯」等指令。电梯消息仅作为一次下行呼梯请求，不代表到梯结果。
+
+灯光、场景和新风的主题映射请按自己的设备调整；电梯主题通过 `elevator.topic` 配置。
 
 > 桥接脚本需要保持运行，建议部署在树莓派或家中常开的设备上，可配合 `systemd` 或 `pm2` 实现开机自启。
 
 详见 [examples/bemfa_bridge.py](examples/bemfa_bridge.py)。
+
+## 可选部署
+
+[gt-smart-home-android](https://github.com/SXXCLL/gt-smart-home-android) 由 SXXCLL 维护，将桥接服务集成到 Android App，可在现有面板运行，无需新增设备。电梯功能仍按本项目文档配置。
+感谢 7thERR 的交流与启发。
 
 ## 文档
 
@@ -211,6 +237,7 @@ with Gateway(config.gateway.ip) as gw:
 | [docs/fresh-air-control.md](docs/fresh-air-control.md) | 新风命令参考 |
 | [docs/ac-control.md](docs/ac-control.md) | 空调控制详解 |
 | [docs/heat-control.md](docs/heat-control.md) | 地暖控制详解 |
+| [docs/elevator-control.md](docs/elevator-control.md) | 电梯下行呼叫配置与使用 |
 | [docs/device-discovery.md](docs/device-discovery.md) | 如何获取你家的设备地址 |
 
 ## 兼容性

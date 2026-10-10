@@ -1,11 +1,11 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "smart-home-zigbee"
-version = "0.1.0"
-description = "Control DNAKE smart home devices (lights, scenes, fresh air) via Zigbee gateway TCP protocol"
+version = "0.2.0"
+description = "Control DNAKE smart home devices via Zigbee TCP and optional SIP elevator calls"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"

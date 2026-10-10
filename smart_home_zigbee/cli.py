@@ -13,6 +13,7 @@ Usage::
     smz ac temp 客厅空调 24   # Set AC temperature
     smz heat on 客厅地暖      # Turn on floor heating
     smz heat temp 客厅地暖 24  # Set floor heating temperature
+    smz elevator down         # Request the configured down call
     smz list                 # List all devices
     smz list scenes          # List all scenes
 """
@@ -28,6 +29,7 @@ from .scene import SceneController
 from .fresh_air import FreshAirController
 from .ac import ACController
 from .heat import FloorHeatingController
+from .elevator import ElevatorController
 
 
 def setup_logging(verbose: bool = False):
@@ -136,6 +138,26 @@ def cmd_heat(args, gw, config):
         return 1
 
     return 0 if ok else 1
+
+
+def cmd_elevator(args, config):
+    """Handle the local-server elevator command."""
+    try:
+        result = ElevatorController(config.elevator).call_down()
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        return 1
+
+    if result.accepted:
+        print("Elevator request accepted (arrival is not confirmed)")
+        return 0
+    if result.message:
+        print(f"Elevator request {result.status}: {result.message}")
+    else:
+        print(f"Elevator request {result.status}")
+    if result.retry_after_seconds is not None:
+        print(f"Retry after {result.retry_after_seconds:.1f} seconds")
+    return 1
 
 
 def cmd_list(args, gw, config):
@@ -249,6 +271,10 @@ def main(argv=None):
     p_heat.add_argument("name", help="Heat device name (e.g., 客厅地暖)")
     p_heat.add_argument("value", nargs="?", type=int, help="Temperature (16-32)")
 
+    # elevator
+    p_elevator = sub.add_parser("elevator", help="Call the configured elevator")
+    p_elevator.add_argument("action", choices=["down"], help="Action to perform")
+
     # list
     p_list = sub.add_parser("list", help="List devices or scenes")
     p_list.add_argument("what", nargs="?",
@@ -271,6 +297,14 @@ def main(argv=None):
     except ImportError as e:
         print(f"Error: {e}")
         return 1
+    except ValueError as e:
+        print(f"Error: {e}")
+        return 1
+
+    # Elevator requests use the local server and must never open the Zigbee
+    # gateway connection.
+    if args.command == "elevator":
+        return cmd_elevator(args, config)
 
     # For 'list' command, gateway connection is optional
     if args.command == "list":

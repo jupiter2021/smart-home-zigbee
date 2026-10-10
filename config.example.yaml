@@ -145,6 +145,16 @@ heats:
     dev_ch: 0x05
     zone: "客厅"
 
+# Optional: call the configured floor's elevator down through the panel-side component
+# Keep the token in the environment; do not put credentials or household identity here.
+elevator:
+  enabled: false
+  endpoint: ""             # e.g. http://<trusted-panel-address>:9998/api/elevator/down
+  token_env: "SMZ_ELEVATOR_TOKEN"
+  timeout: 5
+  cooldown: 30
+  topic: "dianti006"       # Bemfa 006 switch; only an on command triggers a call
+
 # Optional: Bemfa MQTT bridge for Xiaomi XiaoAi voice control
 # See examples/bemfa_bridge.py for the full bridge script
 bemfa:

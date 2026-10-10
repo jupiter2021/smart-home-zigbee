@@ -3,8 +3,8 @@
 DNAKE Smart Home <-> Bemfa (巴法云) MQTT Bridge
 ================================================
 
-Bridges Bemfa cloud MQTT to DNAKE Zigbee gateway, enabling Xiaomi XiaoAi
-(小爱同学) voice control for lights and fresh air.
+Bridges Bemfa cloud MQTT to DNAKE devices, enabling Xiaomi XiaoAi
+(小爱同学) voice control for lights, fresh air, and elevator calls.
 
 Architecture:
   "小爱同学，开客厅灯"
@@ -12,9 +12,10 @@ Architecture:
       -> this script (subscribes to topics)
         -> TCP binary -> Zigbee gateway
           -> Zigbee radio -> light ON
+        -> panel-side elevator component -> SIP down call (optional)
 
 Setup:
-  1. pip install smart-home-zigbee[mqtt]
+  1. python -m pip install -e ".[mqtt]"
   2. Register at https://cloud.bemfa.com, get your private key
   3. Create topics in Bemfa console (see TOPIC_LIGHT_MAP below)
   4. Mi Home App: 我的 -> 其他平台设备 -> 添加 -> 巴法 -> bind
@@ -31,16 +32,11 @@ import sys
 import time
 import signal
 import logging
-
-try:
-    import paho.mqtt.client as mqtt
-except ImportError:
-    print("Error: paho-mqtt is required. Install with: pip install smart-home-zigbee[mqtt]")
-    sys.exit(1)
+import threading
 
 from smart_home_zigbee import Gateway, LightController, load_config
+from smart_home_zigbee.elevator import ElevatorController
 from smart_home_zigbee.fresh_air import FreshAirController
-from smart_home_zigbee.protocol import WIND_SPEED_MAP
 
 logging.basicConfig(
     level=logging.INFO,
@@ -112,8 +108,157 @@ def parse_bemfa_command(payload: str, is_light: bool = True):
     return None
 
 
+def subscription_topics(config):
+    """Keep the existing topics and optionally add one elevator switch."""
+    topics = list(TOPIC_LIGHT_MAP) + list(TOPIC_SCENE_MAP) + list(TOPIC_FRESH_MAP)
+    if config.elevator.enabled:
+        if config.elevator.topic in topics:
+            raise ValueError("Elevator topic must not overlap an existing device topic")
+        topics.append(config.elevator.topic)
+    return list(dict.fromkeys(topics))
+
+
+def _log_elevator_result(result):
+    """Log the bounded outcome exposed by the elevator client."""
+    if result is None:
+        return
+    if getattr(result, "accepted", False):
+        log.info("Elevator request accepted; arrival is not confirmed")
+    else:
+        status = getattr(result, "status", "unknown")
+        log.warning("Elevator request not accepted: %s", status)
+
+
+class _SingleElevatorDispatcher:
+    """Run at most one elevator request and never retain pending triggers."""
+
+    def __init__(self, callback):
+        if not callable(callback):
+            raise TypeError("callback must be callable")
+        self._callback = callback
+        self._lock = threading.Lock()
+        self._busy = False
+        self._closed = False
+        self._thread = None
+
+    def submit(self):
+        """Start one request, returning False when busy or closed."""
+        with self._lock:
+            if self._closed or self._busy:
+                return False
+            self._busy = True
+            thread = threading.Thread(
+                target=self._run,
+                name="elevator-call",
+                daemon=True,
+            )
+            self._thread = thread
+            try:
+                thread.start()
+            except BaseException:
+                self._thread = None
+                self._busy = False
+                raise
+            return True
+
+    def _run(self):
+        try:
+            result = self._callback()
+            _log_elevator_result(result)
+        except Exception:
+            log.error("Elevator request failed; no retry will be attempted")
+        finally:
+            with self._lock:
+                self._busy = False
+                self._thread = None
+
+    def close(self, timeout=None):
+        """Stop new submissions and wait at most ``timeout`` for one call."""
+        with self._lock:
+            self._closed = True
+            thread = self._thread
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout)
+
+
+def create_message_handler(
+    config, lights, fresh_air, elevator=None, elevator_dispatcher=None
+):
+    """Use the same MQTT entry point for devices and a momentary elevator call."""
+    def on_message(client, userdata, msg):
+        topic = msg.topic
+
+        if config.elevator.enabled and topic == config.elevator.topic:
+            # Stored commands and broker redelivery must not repeat a physical call.
+            if getattr(msg, "retain", False) or getattr(msg, "dup", False):
+                log.info("Ignored stored or repeated elevator command")
+                return
+            if len(msg.payload) > 32:
+                return
+            try:
+                payload = msg.payload.decode("utf-8").strip().lower()
+            except UnicodeDecodeError:
+                return
+            if payload != "on" or elevator is None:
+                return
+            if elevator_dispatcher is not None:
+                if not elevator_dispatcher.submit():
+                    log.info("Elevator request ignored because another request is active")
+                return
+            try:
+                result = elevator.call_down()
+            except Exception:
+                log.error("Elevator request failed; no retry will be attempted")
+                return
+            _log_elevator_result(result)
+            return
+
+        payload = msg.payload.decode("utf-8", errors="ignore").strip()
+        log.info("MQTT: %s -> '%s'", topic, payload)
+
+        if topic in TOPIC_LIGHT_MAP:
+            light_name = TOPIC_LIGHT_MAP[topic]
+            on = parse_bemfa_command(payload, is_light=True)
+            if on is not None:
+                lights.on(light_name) if on else lights.off(light_name)
+            return
+
+        if topic in TOPIC_SCENE_MAP:
+            scene_name = TOPIC_SCENE_MAP[topic]
+            on = parse_bemfa_command(payload, is_light=False)
+            if on is not None:
+                scene_lights = config.software_scenes.get(scene_name, [])
+                if scene_lights == ["*"]:
+                    lights.on() if on else lights.off()
+                else:
+                    for name in scene_lights:
+                        lights.on(name) if on else lights.off(name)
+            return
+
+        if topic in TOPIC_FRESH_MAP:
+            (speed,) = TOPIC_FRESH_MAP[topic]
+            on = parse_bemfa_command(payload, is_light=False)
+            if on is not None:
+                if on:
+                    fresh_air.on(speed=speed)
+                else:
+                    fresh_air.off()
+
+    return on_message
+
+
 def main():
-    config = load_config()
+    try:
+        import paho.mqtt.client as mqtt
+    except ImportError:
+        print('Error: paho-mqtt is required. Install with: python -m pip install -e ".[mqtt]"')
+        return 1
+
+    try:
+        config = load_config()
+    except (FileNotFoundError, ImportError, ValueError) as e:
+        log.error("Cannot load bridge configuration: %s", e)
+        return 1
 
     if not config.bemfa.enabled:
         log.warning("Bemfa is not enabled in config.yaml. Set bemfa.enabled: true")
@@ -123,6 +268,18 @@ def main():
         log.error("No Bemfa key configured!")
         log.error("Set bemfa.key in config.yaml or BEMFA_KEY environment variable")
         sys.exit(1)
+
+    try:
+        all_topics = subscription_topics(config)
+        elevator = ElevatorController(config.elevator) if config.elevator.enabled else None
+        elevator_dispatcher = (
+            _SingleElevatorDispatcher(elevator.call_down)
+            if elevator is not None
+            else None
+        )
+    except ValueError as e:
+        log.error("Invalid elevator configuration: %s", e)
+        return 1
 
     # Connect to gateway
     gw = Gateway(config.gateway.ip, config.gateway.port)
@@ -143,49 +300,10 @@ def main():
             return
 
         log.info("Connected to Bemfa MQTT broker")
-        all_topics = list(TOPIC_LIGHT_MAP) + list(TOPIC_SCENE_MAP) + list(TOPIC_FRESH_MAP)
         for topic in all_topics:
             client.subscribe(topic, qos=0)
             time.sleep(0.2)
         log.info("Subscribed to %d topics", len(all_topics))
-
-    def on_message(client, userdata, msg):
-        topic = msg.topic
-        payload = msg.payload.decode("utf-8", errors="ignore").strip()
-        log.info("MQTT: %s -> '%s'", topic, payload)
-
-        # Light control
-        if topic in TOPIC_LIGHT_MAP:
-            light_name = TOPIC_LIGHT_MAP[topic]
-            on = parse_bemfa_command(payload, is_light=True)
-            if on is not None:
-                lights.on(light_name) if on else lights.off(light_name)
-            return
-
-        # Scene control
-        if topic in TOPIC_SCENE_MAP:
-            scene_name = TOPIC_SCENE_MAP[topic]
-            on = parse_bemfa_command(payload, is_light=False)
-            if on is not None:
-                # Software scenes: match lights by scene name from config
-                scene_lights = config.software_scenes.get(scene_name, [])
-                if scene_lights == ["*"]:
-                    lights.on() if on else lights.off()
-                else:
-                    for name in scene_lights:
-                        lights.on(name) if on else lights.off(name)
-            return
-
-        # Fresh air control
-        if topic in TOPIC_FRESH_MAP:
-            (speed,) = TOPIC_FRESH_MAP[topic]
-            on = parse_bemfa_command(payload, is_light=False)
-            if on is not None:
-                if on:
-                    fresh_air.on(speed=speed)
-                else:
-                    fresh_air.off()
-            return
 
     # Connect to Bemfa
     client = mqtt.Client(
@@ -193,7 +311,9 @@ def main():
         callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
     )
     client.on_connect = on_connect
-    client.on_message = on_message
+    client.on_message = create_message_handler(
+        config, lights, fresh_air, elevator, elevator_dispatcher
+    )
     client.reconnect_delay_set(min_delay=1, max_delay=5)
 
     log.info("Connecting to Bemfa MQTT (%s:%d)...", config.bemfa.broker, config.bemfa.port)
@@ -202,6 +322,8 @@ def main():
     # Graceful shutdown
     def shutdown(sig, frame):
         log.info("Shutting down...")
+        if elevator_dispatcher is not None:
+            elevator_dispatcher.close(timeout=max(1.0, config.elevator.timeout + 1.0))
         gw.close()
         client.disconnect()
         sys.exit(0)
@@ -213,4 +335,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

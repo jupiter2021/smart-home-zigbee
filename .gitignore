@@ -1,5 +1,8 @@
 # User config (contains device addresses specific to each installation)
 config.yaml
+panel-elevator/config.json
+panel-elevator/panel-elevator
+panel-elevator/panel-elevator.exe
 
 # Python
 __pycache__/

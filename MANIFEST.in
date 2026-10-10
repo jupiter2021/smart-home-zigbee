@@ -1,0 +1,7 @@
+include config.example.yaml
+recursive-include examples *.py
+recursive-include docs *.md *.png
+include panel-elevator/go.mod
+include panel-elevator/main.go
+include panel-elevator/main_test.go
+include panel-elevator/config.example.json

@@ -7,6 +7,9 @@ config.yaml with their own device addresses -- no code changes required.
 
 import os
 import logging
+import math
+import re
+from urllib.parse import urlsplit
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -84,6 +87,105 @@ class BemfaConfig:
     key: str = ""
 
 
+_ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_ELEVATOR_PATH = "/api/elevator/down"
+
+
+def _validate_elevator_endpoint(endpoint: Any, enabled: bool) -> str:
+    """Validate the fixed local-server endpoint used by the elevator client."""
+    if not isinstance(endpoint, str):
+        raise ValueError("elevator.endpoint must be a string")
+    if not enabled:
+        return endpoint
+    if not endpoint:
+        raise ValueError(
+            "elevator.endpoint is required when elevator.enabled is true"
+        )
+    if any(ch.isspace() or ch == "\\" for ch in endpoint):
+        raise ValueError("elevator.endpoint must not contain whitespace or backslashes")
+
+    try:
+        parsed = urlsplit(endpoint)
+        # Accessing port also validates malformed bracketed hosts and ports.
+        _ = parsed.port
+    except ValueError as exc:
+        raise ValueError("elevator.endpoint is not a valid URL") from exc
+
+    if parsed.scheme.lower() not in ("http", "https"):
+        raise ValueError("elevator.endpoint must use http or https")
+    if not parsed.netloc or not parsed.hostname:
+        raise ValueError("elevator.endpoint must be an absolute URL")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("elevator.endpoint must not contain userinfo")
+    # Reject query/fragment delimiters even when they are empty (``...?``).
+    if "?" in endpoint or "#" in endpoint:
+        raise ValueError("elevator.endpoint must not contain a query or fragment")
+    if parsed.path != _ELEVATOR_PATH:
+        raise ValueError(
+            f"elevator.endpoint path must be {_ELEVATOR_PATH}"
+        )
+    return endpoint
+
+
+def _strict_bool(value: Any, field_name: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{field_name} must be a boolean")
+    return value
+
+
+def _strict_positive_number(
+    value: Any, field_name: str, *, minimum: Optional[float] = None
+) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field_name} must be a finite number")
+    try:
+        number = float(value)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be a finite number") from exc
+    if not math.isfinite(number) or number <= 0:
+        raise ValueError(f"{field_name} must be greater than zero")
+    if minimum is not None and number < minimum:
+        raise ValueError(f"{field_name} must be at least {minimum:g}")
+    return number
+
+
+def _validate_token_env(token_env: Any) -> str:
+    if not isinstance(token_env, str) or not token_env:
+        raise ValueError("elevator.token_env must be a non-empty environment name")
+    if not _ENV_NAME_RE.fullmatch(token_env):
+        raise ValueError("elevator.token_env is not a valid environment name")
+    return token_env
+
+
+def _validate_elevator_topic(topic: Any) -> str:
+    if not isinstance(topic, str) or not topic:
+        raise ValueError("elevator.topic must be a non-empty MQTT topic")
+    if "+" in topic or "#" in topic or "\x00" in topic:
+        raise ValueError("elevator.topic must be an MQTT literal topic")
+    return topic
+
+
+@dataclass
+class ElevatorConfig:
+    """Configuration for the optional local-server elevator adapter."""
+    enabled: bool = False
+    endpoint: str = ""
+    token_env: str = "SMZ_ELEVATOR_TOKEN"
+    timeout: float = 5.0
+    cooldown: float = 30.0
+    topic: str = "dianti006"
+
+    def __post_init__(self) -> None:
+        self.enabled = _strict_bool(self.enabled, "elevator.enabled")
+        self.endpoint = _validate_elevator_endpoint(self.endpoint, self.enabled)
+        self.token_env = _validate_token_env(self.token_env)
+        self.timeout = _strict_positive_number(self.timeout, "elevator.timeout")
+        self.cooldown = _strict_positive_number(
+            self.cooldown, "elevator.cooldown", minimum=1.0
+        )
+        self.topic = _validate_elevator_topic(self.topic)
+
+
 @dataclass
 class Config:
     """Top-level configuration."""
@@ -95,6 +197,7 @@ class Config:
     acs: list[ACDevice] = field(default_factory=list)
     heats: list[HeatDevice] = field(default_factory=list)
     bemfa: BemfaConfig = field(default_factory=BemfaConfig)
+    elevator: ElevatorConfig = field(default_factory=ElevatorConfig)
 
 
 # ============================================================
@@ -248,6 +351,44 @@ def _parse_config(raw: dict) -> Config:
             broker=bemfa.get("broker", config.bemfa.broker),
             port=int(bemfa.get("port", config.bemfa.port)),
             key=key,
+        )
+
+    # Elevator is opt-in and intentionally contains no literal token field.
+    elevator = raw.get("elevator", {})
+    if "elevator" in raw:
+        if not isinstance(elevator, dict):
+            raise ValueError("elevator must be a mapping")
+        forbidden = {"token", "password", "username", "identity"}
+        configured_forbidden = sorted(forbidden.intersection(elevator))
+        if configured_forbidden:
+            raise ValueError(
+                "elevator does not accept literal credentials: "
+                + ", ".join(configured_forbidden)
+            )
+        defaults = config.elevator
+        config.elevator = ElevatorConfig(
+            enabled=(
+                _strict_bool(elevator["enabled"], "elevator.enabled")
+                if "enabled" in elevator
+                else defaults.enabled
+            ),
+            endpoint=elevator.get("endpoint", defaults.endpoint),
+            token_env=elevator.get("token_env", defaults.token_env),
+            timeout=(
+                _strict_positive_number(
+                    elevator["timeout"], "elevator.timeout"
+                )
+                if "timeout" in elevator
+                else defaults.timeout
+            ),
+            cooldown=(
+                _strict_positive_number(
+                    elevator["cooldown"], "elevator.cooldown", minimum=1.0
+                )
+                if "cooldown" in elevator
+                else defaults.cooldown
+            ),
+            topic=elevator.get("topic", defaults.topic),
         )
 
     return config
